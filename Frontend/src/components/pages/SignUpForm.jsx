@@ -2,10 +2,20 @@
 
 import React, { useState, useEffect } from "react";
 import { ChevronDown, Sun, Moon, Sparkles } from "lucide-react";
-import { db, collection, addDoc } from "../../firebase/firebase";
-import axios from "axios"; 
+import {
+  db,
+  collection,
+  addDoc,
+  auth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+} from "../../firebase/firebase";
+import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
-import 'react-toastify/dist/ReactToastify.css';
+import "react-toastify/dist/ReactToastify.css";
+import Modal from "react-modal";
+
+Modal.setAppElement("#root");
 
 export default function SignUpForm() {
   const [isDarkMode, setIsDarkMode] = useState(true); // Default to dark mode
@@ -17,6 +27,11 @@ export default function SignUpForm() {
     campus: "",
     course: "",
   });
+
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (
@@ -31,12 +46,58 @@ export default function SignUpForm() {
     setIsDarkMode(!isDarkMode);
   };
 
+  const sendOtp = async () => {
+    const phoneNumber = `+91${formData.phone}`;
+    window.recaptchaVerifier = new RecaptchaVerifier(
+      "recaptcha-container",
+      {
+        size: "invisible",
+        callback: (response) => {
+          sendOtp();
+        },
+      },
+      auth
+    );
+
+    try {
+      const confirmationResult = await signInWithPhoneNumber(
+        auth,
+        phoneNumber,
+        window.recaptchaVerifier
+      );
+      window.confirmationResult = confirmationResult;
+      setOtpSent(true);
+      setIsModalOpen(true);
+      toast.success("OTP sent to your phone number!");
+    } catch (error) {
+      console.error("Error sending OTP:", error);
+      toast.error("There was an error sending the OTP.");
+    }
+  };
+
+  const verifyOtp = async () => {
+    try {
+      const confirmationResult = window.confirmationResult;
+      await confirmationResult.confirm(otp);
+      setOtpVerified(true);
+      setIsModalOpen(false);
+      toast.success("OTP verified successfully!");
+    } catch (error) {
+      console.error("Error verifying OTP:", error);
+      toast.error("Invalid OTP. Please try again.");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!otpVerified) {
+      return sendOtp();
+    }
+
     try {
       // Add the form data to Firebase Firestore
-      const docRef = await addDoc(collection(db, "form_submissions"), formData);
+      await addDoc(collection(db, "form_submissions"), formData);
       toast.success("Form submitted successfully!");
     } catch (e) {
       console.error("Error adding document: ", e);
@@ -44,7 +105,7 @@ export default function SignUpForm() {
     }
 
     try {
-      const response = await axios.post("http://localhost:3000/submit-form", formData);
+      await axios.post("http://localhost:3000/submit-form", formData);
       toast.success("Form submitted successfully! Check your email.");
     } catch (error) {
       console.error("Error:", error);
@@ -53,8 +114,8 @@ export default function SignUpForm() {
   };
 
   return (
-    <div className="relative flex items-center justify-center p-4 overflow-hidden  ">
-      <div className="w-[27vw] max-sm:w-[90vw] max-lg:w-[50vw] max-w-lg pt-0  max-sm:pt-0 ">
+    <div className="relative flex items-center justify-center p-4 overflow-hidden">
+      <div className="w-[27vw] max-sm:w-[90vw] max-lg:w-[50vw] max-w-lg pt-0 max-sm:pt-0">
         <div
           className={`rounded-2xl p-8 transition-all duration-500 backdrop-blur-xl overflow-hidden relative ${
             isDarkMode ? "bg-gray-800/80" : "bg-white/80"
@@ -115,18 +176,25 @@ export default function SignUpForm() {
                 type: "text",
                 label: "Full Name",
                 value: formData.fullName,
+                pattern: "^[a-zA-Z ]{3,}$",
+                error:
+                  "Name must be at least 3 characters long and contain only letters and spaces.",
               },
               {
                 id: "phone",
                 type: "tel",
                 label: "Phone Number",
                 value: formData.phone,
+                pattern: "^[0-9]{10}$",
+                error: "Phone number must be 10 digits.",
               },
               {
                 id: "email",
                 type: "email",
                 label: "Email Address",
                 value: formData.email,
+                pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+                error: "Invalid email format.",
               },
             ].map((field) => (
               <div key={field.id} className="relative group">
@@ -144,6 +212,8 @@ export default function SignUpForm() {
                   }`}
                   placeholder=" "
                   required
+                  pattern={field.pattern}
+                  title={field.error}
                 />
                 <label
                   htmlFor={field.id}
@@ -236,6 +306,18 @@ export default function SignUpForm() {
             </div>
 
             <button
+              type="button"
+              onClick={sendOtp}
+              className={`w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 ${
+                isDarkMode
+                  ? "bg-yellow-400 hover:bg-yellow-500"
+                  : "bg-yellow-500 hover:bg-yellow-600"
+              }`}
+            >
+              Send OTP
+            </button>
+
+            <button
               type="submit"
               className={`w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 ${
                 isDarkMode
@@ -248,7 +330,38 @@ export default function SignUpForm() {
           </form>
         </div>
       </div>
-      <ToastContainer className="mt-4"/>
+      <ToastContainer className="mt-4" />
+      <div id="recaptcha-container"></div>
+
+      <Modal
+        isOpen={isModalOpen}
+        onRequestClose={() => setIsModalOpen(false)}
+        contentLabel="OTP Verification"
+        className="modal"
+        overlayClassName="overlay"
+      >
+        <div className="p-4">
+          <h2 className="text-2xl mb-4">Verify OTP</h2>
+          <input
+            type="text"
+            id="otp"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            className="input-field mb-4"
+            placeholder="Enter OTP"
+            required
+            pattern="^[0-9]{6}$"
+            title="OTP must be 6 digits."
+          />
+          <button
+            type="button"
+            onClick={verifyOtp}
+            className="w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 bg-yellow-500 hover:bg-yellow-600"
+          >
+            Verify OTP
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

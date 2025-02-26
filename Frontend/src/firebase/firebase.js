@@ -1,6 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore, collection, addDoc } from "firebase/firestore";
+import {
+  getAuth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+} from "firebase/auth";
 
 // Your web app's Firebase configuration using environment variables
 const firebaseConfig = {
@@ -17,5 +22,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
-export { db, collection, addDoc };
+
+// Disable app verification for testing
+auth.settings.appVerificationDisabledForTesting = true;
+export {
+  db,
+  collection,
+  addDoc,
+  auth,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+};
