@@ -2,20 +2,16 @@
 
 import React, { useState, useEffect } from "react";
 import { ChevronDown, Sun, Moon, Sparkles } from "lucide-react";
-import {
-  db,
-  collection,
-  addDoc,
-  auth,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-} from "../../firebase/firebase";
+import { db, collection, addDoc } from "../../firebase/firebase";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Modal from "react-modal";
+import ReCAPTCHA from "react-google-recaptcha";
 
 Modal.setAppElement("#root");
+
+const FORM_COLLECTION = "form_submissions";
 
 export default function SignUpForm() {
   const [isDarkMode, setIsDarkMode] = useState(true); // Default to dark mode
@@ -27,11 +23,8 @@ export default function SignUpForm() {
     campus: "",
     course: "",
   });
-
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Manage button disabled state
 
   useEffect(() => {
     if (
@@ -46,76 +39,68 @@ export default function SignUpForm() {
     setIsDarkMode(!isDarkMode);
   };
 
-  const sendOtp = async () => {
-    const phoneNumber = `+91${formData.phone}`;
-    window.recaptchaVerifier = new RecaptchaVerifier(
-      "recaptcha-container",
-      {
-        size: "invisible",
-        callback: (response) => {
-          sendOtp();
-        },
-      },
-      auth
-    );
-
-    try {
-      const confirmationResult = await signInWithPhoneNumber(
-        auth,
-        phoneNumber,
-        window.recaptchaVerifier
-      );
-      window.confirmationResult = confirmationResult;
-      setOtpSent(true);
-      setIsModalOpen(true);
-      toast.success("OTP sent to your phone number!");
-    } catch (error) {
-      console.error("Error sending OTP:", error);
-      toast.error("There was an error sending the OTP.");
-    }
-  };
-
-  const verifyOtp = async () => {
-    try {
-      const confirmationResult = window.confirmationResult;
-      await confirmationResult.confirm(otp);
-      setOtpVerified(true);
-      setIsModalOpen(false);
-      toast.success("OTP verified successfully!");
-    } catch (error) {
-      console.error("Error verifying OTP:", error);
-      toast.error("Invalid OTP. Please try again.");
-    }
+  const handleRecaptchaChange = (token) => {
+    setRecaptchaToken(token);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true); // Disable the submit button
 
-    if (!otpVerified) {
-      return sendOtp();
+    if (!recaptchaToken) {
+      toast.warn("Please complete the reCAPTCHA verification.");
+      setIsSubmitting(false); // Re-enable the submit button
+      return;
     }
 
     try {
+      const recaptchaResponse = await axios.post(
+        `${import.meta.env.VITE_APP_API_URL}/verify-recaptcha`,
+        { token: recaptchaToken }
+      );
+
+      if (!recaptchaResponse.data.success) {
+        toast.error("reCAPTCHA verification failed. Please try again.");
+        setIsSubmitting(false); // Re-enable the submit button
+        return;
+      }
+
       // Add the form data to Firebase Firestore
-      await addDoc(collection(db, "form_submissions"), formData);
+      await addDoc(collection(db, FORM_COLLECTION), formData);
       toast.success("Form submitted successfully!");
-    } catch (e) {
-      console.error("Error adding document: ", e);
-      toast.error("There was an error submitting the form to Firestore.");
-    }
 
-    try {
-      await axios.post("http://localhost:3000/submit-form", formData);
-      toast.success("Form submitted successfully! Check your email.");
+      // Send form data to your server
+      await axios.post(
+        `${import.meta.env.VITE_APP_API_URL}/submit-form`,
+        formData
+      );
+      toast.success("Form submitted successfully!");
+
+      // Reset the form
+      setFormData({
+        fullName: "",
+        phone: "",
+        email: "",
+        state: "",
+        campus: "",
+        course: "",
+      });
+
+      // Reload the page
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000); // Adjust the time as needed
     } catch (error) {
       console.error("Error:", error);
       toast.error("There was an error submitting the form.");
+    } finally {
+      setIsSubmitting(false); // Re-enable the submit button
     }
   };
 
   return (
     <div className="relative flex items-center justify-center p-4 overflow-hidden">
-      <div className="w-[27vw] max-sm:w-[90vw] max-lg:w-[50vw] max-w-lg pt-0 max-sm:pt-0">
+      <div className="w-full max-w-lg pt-0">
         <div
           className={`rounded-2xl p-8 transition-all duration-500 backdrop-blur-xl overflow-hidden relative ${
             isDarkMode ? "bg-gray-800/80" : "bg-white/80"
@@ -230,7 +215,7 @@ export default function SignUpForm() {
               </div>
             ))}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 {
                   id: "state",
@@ -305,63 +290,31 @@ export default function SignUpForm() {
               />
             </div>
 
-            <button
-              type="button"
-              onClick={sendOtp}
-              className={`w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 ${
-                isDarkMode
-                  ? "bg-yellow-400 hover:bg-yellow-500"
-                  : "bg-yellow-500 hover:bg-yellow-600"
-              }`}
-            >
-              Send OTP
-            </button>
+            <div className="flex justify-center">
+              <ReCAPTCHA
+                sitekey={import.meta.env.VITE_APP_RECAPTCHA_SITE_KEY}
+                onChange={handleRecaptchaChange}
+                className="w-full md:w-auto"
+              />
+            </div>
 
             <button
               type="submit"
+              disabled={isSubmitting} // Disable the button when submitting
               className={`w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 ${
-                isDarkMode
+                isSubmitting
+                  ? "bg-gray-400 cursor-not-allowed" // Styling for disabled state
+                  : isDarkMode
                   ? "bg-yellow-400 hover:bg-yellow-500"
                   : "bg-yellow-500 hover:bg-yellow-600"
               }`}
             >
-              Submit
+              {isSubmitting ? "Submitting..." : "Submit"}
             </button>
           </form>
         </div>
       </div>
       <ToastContainer className="mt-4" />
-      <div id="recaptcha-container"></div>
-
-      <Modal
-        isOpen={isModalOpen}
-        onRequestClose={() => setIsModalOpen(false)}
-        contentLabel="OTP Verification"
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <div className="p-4">
-          <h2 className="text-2xl mb-4">Verify OTP</h2>
-          <input
-            type="text"
-            id="otp"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            className="input-field mb-4"
-            placeholder="Enter OTP"
-            required
-            pattern="^[0-9]{6}$"
-            title="OTP must be 6 digits."
-          />
-          <button
-            type="button"
-            onClick={verifyOtp}
-            className="w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 bg-yellow-500 hover:bg-yellow-600"
-          >
-            Verify OTP
-          </button>
-        </div>
-      </Modal>
     </div>
   );
 }
