@@ -23,8 +23,11 @@ export default function SignUpForm() {
     campus: "",
     course: "",
   });
+  const [formErrors, setFormErrors] = useState({});
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false); // Manage button disabled state
+  const [modalMessage, setModalMessage] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const states = [
     "Andhra Pradesh",
@@ -143,8 +146,30 @@ export default function SignUpForm() {
     setRecaptchaToken(token);
   };
 
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.fullName) errors.fullName = "Full name is required.";
+    if (!formData.phone) errors.phone = "Phone number is required.";
+    if (!/^[0-9]{10}$/.test(formData.phone))
+      errors.phone = "Phone number must be 10 digits.";
+    if (!formData.email) errors.email = "Email address is required.";
+    if (!/\S+@\S+\.\S+/.test(formData.email))
+      errors.email = "Email address is invalid.";
+    if (!formData.state) errors.state = "State is required.";
+    if (!formData.campus) errors.campus = "Campus is required.";
+    if (!formData.course) errors.course = "Course selection is required.";
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormErrors({});
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true); // Disable the submit button
 
     if (!recaptchaToken) {
@@ -167,14 +192,16 @@ export default function SignUpForm() {
 
       // Add the form data to Firebase Firestore
       await addDoc(collection(db, FORM_COLLECTION), formData);
-      toast.success("Form submitted successfully!");
 
       // Send form data to your server
       await axios.post(
         `${import.meta.env.VITE_APP_API_URL}/submit-form`,
         formData
       );
-      toast.success("Form submitted successfully!");
+
+      // Show success message
+      setModalMessage("Form submitted successfully!");
+      setIsModalOpen(true);
 
       // Reset the form
       setFormData({
@@ -186,13 +213,11 @@ export default function SignUpForm() {
         course: "",
       });
 
-      // Reload the page
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000); // Adjust the time as needed
     } catch (error) {
       console.error("Error:", error);
-      toast.error("There was an error submitting the form.");
+      // Show error message
+      setModalMessage("There was an error submitting the form.");
+      setIsModalOpen(true);
     } finally {
       setIsSubmitting(false); // Re-enable the submit button
     }
@@ -203,7 +228,7 @@ export default function SignUpForm() {
       <div className="w-full max-w-md p-2">
         <div
           className={`rounded-2xl p-6 transition-all duration-500 backdrop-blur-xl relative ${
-            isDarkMode ? "bg-gray-800/80" : "bg-white/80"
+            isDarkMode ? "bg-gray-900/90" : "bg-white/90"
           }`}
         >
           {/* Gradient backgrounds */}
@@ -265,7 +290,7 @@ export default function SignUpForm() {
                   <label
                     htmlFor={field.id}
                     className={`absolute left-3 -top-2.5 bg-inherit px-2 text-xs transition-all
-                      ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}
+                      ${isDarkMode ? "text-gray-400" : "text-gray-700"}`}
                   >
                     {field.label}
                   </label>
@@ -279,11 +304,16 @@ export default function SignUpForm() {
                     className={`w-full rounded-lg mt-2 px-4 py-2.5 text-sm border transition-colors
                       ${
                         isDarkMode
-                          ? "bg-gray-700/50 text-white border-gray-600 focus:border-yellow-400"
-                          : "bg-white text-gray-800 border-gray-200 focus:border-yellow-500"
+                          ? "bg-gray-800 text-white border-gray-600 focus:border-yellow-400"
+                          : "bg-white text-gray-800 border-gray-300 focus:border-yellow-500"
                       }`}
                     required
                   />
+                  {formErrors[field.id] && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {formErrors[field.id]}
+                    </p>
+                  )}
                 </div>
               ))}
 
@@ -304,7 +334,7 @@ export default function SignUpForm() {
                     <label
                       htmlFor={select.id}
                       className={`absolute left-3 -top-2.5 bg-inherit px-2 text-xs
-                        ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}
+                        ${isDarkMode ? "text-gray-400" : "text-gray-700"}`}
                     >
                       {select.label}
                     </label>
@@ -320,8 +350,8 @@ export default function SignUpForm() {
                       className={`w-full rounded-lg mt-2 px-4 py-2.5 text-sm border appearance-none
                         ${
                           isDarkMode
-                            ? "bg-gray-700/50 text-white border-gray-600"
-                            : "bg-white text-gray-800 border-gray-200"
+                            ? "bg-gray-800 text-white border-gray-600"
+                            : "bg-white text-gray-800 border-gray-300"
                         }`}
                       required
                     >
@@ -333,6 +363,11 @@ export default function SignUpForm() {
                       ))}
                     </select>
                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" />
+                    {formErrors[select.id] && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {formErrors[select.id]}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -342,7 +377,7 @@ export default function SignUpForm() {
                 <label
                   htmlFor="course"
                   className={`absolute left-3 -top-2.5 z-10 bg-inherit px-2 text-xs
-                    ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}
+                    ${isDarkMode ? "text-gray-400" : "text-gray-700"}`}
                 >
                   Course
                 </label>
@@ -355,8 +390,8 @@ export default function SignUpForm() {
                   className={`w-full rounded-lg mt-2 px-4 py-2.5 text-sm border appearance-none
                     ${
                       isDarkMode
-                        ? "bg-gray-700/50 text-white border-gray-600"
-                        : "bg-white text-gray-800 border-gray-200"
+                        ? "bg-gray-800 text-white border-gray-600"
+                        : "bg-white text-gray-800 border-gray-300"
                     }`}
                   required
                 >
@@ -384,6 +419,11 @@ export default function SignUpForm() {
                   </optgroup>
                 </select>
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" />
+                {formErrors.course && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {formErrors.course}
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-center">
@@ -392,17 +432,22 @@ export default function SignUpForm() {
                   onChange={handleRecaptchaChange}
                   className="w-full md:w-auto max-sm:w-80"
                 />
+                {formErrors.recaptcha && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {formErrors.recaptcha}
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting} // Disable the button when submitting
-                className={`w-full p-4 rounded-xl text-white font-semibold transition-all duration-300 hover:scale-105 ${
+                className={`w-full p-4 text-2xl rounded-xl text-gray-900 font-semibold transition-all duration-300 hover:scale-105 ${
                   isSubmitting
                     ? "bg-gray-400 cursor-not-allowed" // Styling for disabled state
                     : isDarkMode
-                    ? "bg-yellow-400 hover:bg-yellow-500"
-                    : "bg-yellow-500 hover:bg-yellow-600"
+                    ? "bg-yellow-500"
+                    : "bg-yellow-600 "
                 }`}
               >
                 {isSubmitting ? "Submitting..." : "Submit"}
@@ -411,10 +456,24 @@ export default function SignUpForm() {
           </div>
         </div>
       </div>
+      <Modal
+        isOpen={isModalOpen}
+        onRequestClose={() => setIsModalOpen(false)}
+        className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75"
+      >
+        <div className="bg-black dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+          <h2 className="text-xl font-bold mb-4 dark:text-black">{modalMessage}</h2>
+          <button
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-700"
+            onClick={() => setIsModalOpen(false)}
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
       <ToastContainer
         className="mt-4"
-        limit={1} // Limit notifications to 1 at a time
-        autoClose={3000} // Close after 3 seconds
+        position="top-right"
       />
     </div>
   );
