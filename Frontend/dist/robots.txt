@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://admissions.ctgroup.in/sitemap.xml
